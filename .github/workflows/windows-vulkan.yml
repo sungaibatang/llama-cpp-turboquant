@@ -1,7 +1,7 @@
 name: Build Windows Vulkan (.exe)
 
 on:
-  workflow_dispatch: # Memunculkan tombol "Run Workflow" manual di tab Actions
+  workflow_dispatch:
 
 jobs:
   build-windows-vulkan:
@@ -14,29 +14,38 @@ jobs:
         submodules: recursive
         fetch-depth: 0
 
-    - name: Get Latest Vulkan SDK Version (From LunarG)
+    - name: Get Latest Vulkan SDK Version
       shell: powershell
       id: get_vulkan_version
       run: |
-        # Menggunakan curl.exe asli Windows untuk mengambil teks versi mentah secara aman
         $version = (curl.exe -s https://vulkan.lunarg.com/sdk/latest/windows.txt).Trim()
         echo "VULKAN_VERSION=$version" >> $env:GITHUB_ENV
         echo "Mendeteksi Vulkan SDK versi: $version"
 
-    - name: Install Vulkan SDK via Chocolatey
+    - name: Download and Install Vulkan SDK Directly
       shell: powershell
       run: |
-        # Mengunci instalasi sesuai versi dinamis yang didapatkan di atas
-        choco install vulkan-sdk --version "${{ env.VULKAN_VERSION }}" -y --no-progress
+        echo "Downloading Vulkan SDK ${{ env.VULKAN_VERSION }} dari LunarG..."
+        curl.exe -L -o vulkan-sdk-installer.exe "https://sdk.lunarg.com/sdk/download/${{ env.VULKAN_VERSION }}/windows/vulkan-sdk.exe"
         
-        # Mendaftarkan path ke environment variable runner secara permanen
+        echo "Installing Vulkan SDK (Silent Mode)..."
+        # Menjalankan installer dan mengunci proses agar GitHub WAJIB menunggu sampai selesai total
+        $proc = Start-Process -FilePath .\vulkan-sdk-installer.exe -ArgumentList "--default-answer", "--accept-licenses", "--confirm-command", "install" -PassThru
+        $proc | Wait-Process
+        
+        # Mendaftarkan path lokasi instalasi default asli LunarG
         echo "VULKAN_SDK=C:\VulkanSDK\${{ env.VULKAN_VERSION }}" >> $env:GITHUB_ENV
         echo "C:\VulkanSDK\${{ env.VULKAN_VERSION }}\Bin" >> $env:GITHUB_PATH
 
-    - name: Configure CMake (Sesuai Standar TurboQuant)
+    - name: Configure CMake
       shell: powershell
       run: |
-        # Menjalankan konfigurasi CMake dengan flag optimal dari Dockerfile & CI asli
+        # Memastikan folder target memang ada sebelum CMake berjalan
+        if (!(Test-Path "$env:VULKAN_SDK")) {
+            echo "Eror: Folder Vulkan SDK tidak ditemukan di $env:VULKAN_SDK"
+            exit 1
+        }
+        
         cmake -B build -G "Visual Studio 17 2022" -A x64 `
           -DGGML_NATIVE=OFF `
           -DGGML_VULKAN=ON `
