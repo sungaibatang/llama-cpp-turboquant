@@ -1,7 +1,7 @@
 name: Build Windows Vulkan (.exe)
 
 on:
-  workflow_dispatch: # Memunculkan tombol hijau manual
+  workflow_dispatch: # Memunculkan tombol "Run Workflow" manual di tab Actions
 
 jobs:
   build-windows-vulkan:
@@ -18,8 +18,8 @@ jobs:
       shell: powershell
       id: get_vulkan_version
       run: |
-        # Mengambil nomor versi terbaru secara dinamis dari server LunarG seperti skrip asli
-        $version = (Invoke-WebRequest -Uri "https://vulkan.lunarg.com/sdk/latest/windows.txt").Content.Trim()
+        # Menggunakan curl.exe asli Windows untuk mengambil teks versi mentah secara aman
+        $version = (curl.exe -s https://vulkan.lunarg.com/sdk/latest/windows.txt).Trim()
         echo "VULKAN_VERSION=$version" >> $env:GITHUB_ENV
         echo "Mendeteksi Vulkan SDK versi: $version"
 
