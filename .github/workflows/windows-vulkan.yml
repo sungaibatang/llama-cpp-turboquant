@@ -5,7 +5,7 @@ on:
 
 jobs:
   build-vulkan:
-    runs-on: windows-2022 # Mengunci versi OS agar lebih stabil
+    runs-on: windows-2022
 
     steps:
     - name: Checkout repository
@@ -15,22 +15,45 @@ jobs:
         fetch-depth: 0
 
     - name: Setup Vulkan SDK
+      shell: powershell
       run: |
-        # Mengunduh dan memasang Vulkan SDK secara senyap (silent install)
+        # 1. Unduh Installer Vulkan SDK resmi
+        echo "Downloading Vulkan SDK..."
         curl -L -o vulkan-sdk-installer.exe https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe
-        start-process -FilePath .\vulkan-sdk-installer.exe -ArgumentList "--default-answer", "--accept-licenses", "--confirm-command", "install" -Wait
         
-        # Memastikan Environment Variable terpasang di sesi ini
-        echo "VULKAN_SDK=C:\VulkanSDK" >> $GITHUB_ENV
-        echo "C:\VulkanSDK\Bin" >> $GITHUB_PATH
+        # 2. Jalankan instalasi senyap dan paksa tunggu sampai tuntas
+        echo "Installing Vulkan SDK..."
+        $process = Start-Process -FilePath .\vulkan-sdk-installer.exe -ArgumentList "--default-answer", "--accept-licenses", "--confirm-command", "install" -PassThru -Wait
+        
+        # 3. Validasi paksa: Tunggu hingga folder biner dan komponen utama benar-benar eksis
+        echo "Validating installation pathways..."
+        $timeout = 0
+        while (!(Test-Path "C:\VulkanSDK\*\Bin\glslc.exe") -and $timeout -lt 30) {
+            Start-Sleep -Seconds 5
+            $timeout += 5
+            echo "Waiting for Vulkan SDK extraction to complete... ($timeout seconds elapsed)"
+        }
+
+        # 4. Cari path dinamis (karena struktur folder menyertakan nomor versi, misal C:\VulkanSDK\1.3.xxx.x)
+        $VulkanPath = Get-ChildItem -Path "C:\VulkanSDK" -Directory | Select-Object -First 1
+        if ($VulkanPath) {
+            $FullPath = $VulkanPath.FullName
+            echo "VULKAN_SDK=$FullPath" >> $env:GITHUB_ENV
+            echo "$FullPath\Bin" >> $env:GITHUB_PATH
+            echo "Successfully found Vulkan SDK at: $FullPath"
+        } else {
+            echo "Error: Vulkan SDK installation directory not found!"
+            exit 1
+        }
 
     - name: Configure CMake
+      shell: powershell
       run: |
-        # Membuat folder build dan konfigurasi dengan mengarahkan manual ke Vulkan SDK
+        # Menggunakan jalur variabel dinamis yang telah diverifikasi
         cmake -B build -G "Visual Studio 17 2022" -A x64 `
           -DGGML_VULKAN=ON `
           -DCMAKE_BUILD_TYPE=Release `
-          -DVulkan_DIR="C:/VulkanSDK/lib/cmake/Vulkan"
+          -DVulkan_DIR="$env:VULKAN_SDK/lib/cmake/Vulkan"
 
     - name: Build llama.cpp
       run: |
